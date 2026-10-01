@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="h-full overflow-hidden">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>經典踩地雷 Pro - Minesweeper Classic</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Canvas Confetti for winning animation -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    /* Digital LED Display Font Simulation */
+    @font-face {
+      font-family: 'Digital7';
+      src: url('https://cdnjs.cloudflare.com/ajax/libs/font-digital-7/1.0.0/digital-7.ttf') format('truetype');
+    }
+    .led-font {
+      font-family: 'Digital7', 'Courier New', Courier, monospace;
+      letter-spacing: 2px;
+    }
+
+    /* Strict no-scroll guarantees */
+    html, body {
+      height: 100%;
+      width: 100%;
+      overflow: hidden !important;
+      touch-action: manipulation;
+    }
+
+    /* Prevent text selection */
+    .no-select {
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    /* Cell Styles & Animations */
+    .mine-cell {
+      transition: background-color 0.12s ease, transform 0.05s ease;
+      touch-action: manipulation;
+    }
+    .mine-cell:active {
+      transform: scale(0.92);
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 h-full w-full flex flex-col justify-between font-sans no-select p-2 sm:p-3 overflow-hidden box-border">
+
+  <!-- Header Section -->
+  <header class="w-full max-w-4xl mx-auto flex items-center justify-between shrink-0 mb-1">
+    <div class="flex items-center space-x-2">
+      <div class="bg-amber-500 text-slate-950 p-1.5 sm:p-2 rounded-xl shadow-lg shadow-amber-500/20">
+        <i class="fa-solid font-bold fa-land-mine-on text-lg sm:text-xl"></i>
+      </div>
+      <div>
+        <h1 class="text-base sm:text-xl font-black tracking-wide text-white flex items-center gap-1.5">
+          踩地雷 <span class="text-[10px] sm:text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded-full">PRO</span>
+        </h1>
+      </div>
+    </div>
+
+    <!-- Right Top Nav Controls -->
+    <div class="flex items-center space-x-1.5">
+      <button id="btn-help" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs sm:text-sm border border-slate-700 transition flex items-center gap-1" title="操作說明">
+        <i class="fa-solid fa-circle-question"></i>
+        <span class="hidden sm:inline">說明</span>
+      </button>
+      <button id="btn-stats" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-lg text-xs sm:text-sm border border-slate-700 transition flex items-center gap-1" title="排行榜統計">
+        <i class="fa-solid fa-trophy"></i>
+        <span class="hidden sm:inline">戰績紀錄</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Game Layout Wrapper -->
+  <main class="w-full max-w-4xl mx-auto bg-slate-800/90 backdrop-blur-md border border-slate-700/80 rounded-xl shadow-2xl p-2 sm:p-3 flex-1 flex flex-col justify-between items-center overflow-hidden min-h-0">
+    
+    <!-- Controls Toolbar -->
+    <div class="w-full flex items-center justify-between gap-2 bg-slate-950/60 px-3 py-1.5 rounded-lg border border-slate-800 shrink-0">
+      
+      <!-- Difficulty Select -->
+      <div class="flex items-center space-x-1.5">
+        <label for="difficulty-select" class="text-xs text-slate-400 font-medium hidden sm:inline">難度：</label>
+        <select id="difficulty-select" class="bg-slate-800 text-slate-200 border border-slate-700 text-xs sm:text-sm rounded-md px-2 py-1 focus:ring-2 focus:ring-amber-500 outline-none">
+          <option value="easy">初級 (9×9, 10雷)</option>
+          <option value="medium" selected>中級 (16×16, 40雷)</option>
+          <option value="hard">高級 (30×16, 99雷)</option>
+          <option value="custom">自訂難度...</option>
+        </select>
+      </div>
+
+      <!-- Explicit Always-Visible New Game / Restart Button -->
+      <button id="btn-top-restart" class="px-3 py-1 bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-bold rounded-md text-xs sm:text-sm transition shadow flex items-center gap-1.5">
+        <i class="fa-solid fa-rotate-right"></i>
+        <span>重新開始</span>
+      </button>
+
+      <!-- Quick Toggle Mode for Mobile Touch -->
+      <div class="flex items-center bg-slate-800 rounded-md p-0.5 border border-slate-700 sm:hidden">
+        <button id="mode-dig" class="px-2 py-0.5 rounded text-[11px] font-bold transition bg-amber-500 text-slate-950">
+          <i class="fa-solid fa-shovel"></i> 挖掘
+        </button>
+        <button id="mode-flag" class="px-2 py-0.5 rounded text-[11px] font-bold transition text-slate-400 hover:text-white">
+          <i class="fa-solid fa-flag text-red-500"></i> 插旗
+        </button>
+      </div>
+    </div>
+
+    <!-- Minesweeper LCD Frame Header -->
+    <div class="w-full max-w-xl bg-slate-900 border-2 sm:border-4 border-slate-700 rounded-lg p-2 my-1.5 shadow-inner flex items-center justify-between shrink-0">
+      
+      <!-- Left: Flag Counter LCD -->
+      <div class="flex flex-col items-center">
+        <span class="text-[9px] sm:text-[10px] text-slate-400 font-bold tracking-wider">REMAINING</span>
+        <div class="bg-black text-red-500 text-2xl sm:text-3xl font-bold px-2.5 py-0.5 rounded border border-red-950/80 shadow-[0_0_10px_rgba(239,68,68,0.2)] led-font min-w-[65px] sm:min-w-[75px] text-center" id="lcd-mines">
+          040
+        </div>
+      </div>
+
+      <!-- Center: Face Status Button -->
+      <button id="btn-reset" class="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-b from-slate-700 to-slate-800 hover:from-slate-600 hover:to-slate-700 border-2 border-slate-500 rounded-full flex items-center justify-center text-xl sm:text-2xl shadow-lg active:scale-95 transition" title="重新開始">
+        <span id="face-icon">😊</span>
+      </button>
+
+      <!-- Right: Timer LCD -->
+      <div class="flex flex-col items-center">
+        <span class="text-[9px] sm:text-[10px] text-slate-400 font-bold tracking-wider">TIME</span>
+        <div class="bg-black text-red-500 text-2xl sm:text-3xl font-bold px-2.5 py-0.5 rounded border border-red-950/80 shadow-[0_0_10px_rgba(239,68,68,0.2)] led-font min-w-[65px] sm:min-w-[75px] text-center" id="lcd-timer">
+          000
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Board Wrapper (Scales to viewport, strictly no scroll) -->
+    <div id="board-wrapper" class="w-full flex-1 flex justify-center items-center overflow-hidden min-h-0 relative p-1">
+      <div class="p-1 sm:p-2 bg-slate-950 border-2 border-slate-700/80 rounded-xl shadow-2xl max-h-full max-w-full flex justify-center items-center">
+        <div id="mine-grid" class="grid justify-center items-center"></div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Footer Footer info -->
+  <footer class="py-1 text-[11px] text-slate-500 text-center shrink-0">
+    <p>經典踩地雷 Pro &copy; 2026. 全畫面無滾輪適應 | 雙擊數值區可自動掃描</p>
+  </footer>
+
+  <!-- Modal: Game Over / Victory Action Dialog -->
+  <div id="modal-result" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-800 border-2 border-slate-700 w-full max-w-md rounded-2xl p-6 shadow-2xl text-center flex flex-col items-center transform transition-all scale-100">
+      
+      <div id="result-icon-bg" class="w-20 h-20 rounded-full flex items-center justify-center mb-3 text-4xl shadow-inner border">
+        <span id="result-emoji">🎉</span>
+      </div>
+
+      <h2 id="result-title" class="text-2xl font-black text-white mb-1">挑戰成功！</h2>
+      <p id="result-subtitle" class="text-sm text-slate-400 mb-4">你清除了所有隱藏的地雷！</p>
+
+      <!-- Results Data Breakdown -->
+      <div class="w-full bg-slate-900/90 rounded-xl p-3 border border-slate-700/60 mb-5 space-y-2 text-sm">
+        <div class="flex justify-between items-center text-slate-300">
+          <span>遊戲時間：</span>
+          <span id="result-time" class="font-bold text-amber-400">0 秒</span>
+        </div>
+        <div class="flex justify-between items-center text-slate-300">
+          <span>難度設定：</span>
+          <span id="result-difficulty" class="font-bold text-slate-200">中級</span>
+        </div>
+        <div id="result-best-time-row" class="flex justify-between items-center text-slate-300 border-t border-slate-800 pt-1 text-xs">
+          <span>該難度最佳紀錄：</span>
+          <span id="result-best-time" class="font-bold text-emerald-400">-- 秒</span>
+        </div>
+      </div>
+
+      <!-- Prominent Primary Restart / Play Again Button -->
+      <button id="btn-result-restart" class="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-lg rounded-xl shadow-lg active:scale-95 transition flex items-center justify-center gap-2">
+        <i class="fa-solid fa-rotate-right text-xl"></i>
+        <span>再玩一次 (重新開始)</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal: Custom Difficulty Settings -->
+  <div id="modal-custom" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-800 border border-slate-700 w-full max-w-md rounded-2xl p-6 shadow-2xl">
+      <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+        <i class="fa-solid fa-sliders text-amber-400"></i> 自訂遊戲難度
+      </h3>
+      <form id="custom-form" class="space-y-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">列數 Row Count (9 - 30)</label>
+          <input type="number" id="custom-rows" min="9" max="30" value="16" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">欄數 Column Count (9 - 30)</label>
+          <input type="number" id="custom-cols" min="9" max="30" value="16" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">地雷數量 Mine Count (1 - 600)</label>
+          <input type="number" id="custom-mines" min="1" max="600" value="40" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500">
+        </div>
+        <p id="custom-error" class="text-xs text-red-400 hidden">地雷數量過多（需保留最少9個安全空格）。</p>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" id="btn-custom-cancel" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium">取消</button>
+          <button type="submit" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-sm">確認套用</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Leaderboard & Game Stats -->
+  <div id="modal-stats" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-800 border border-slate-700 w-full max-w-lg rounded-2xl p-5 shadow-2xl">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-trophy text-amber-400"></i> 戰績數據與紀錄
+        </h3>
+        <button class="close-modal text-slate-400 hover:text-white text-xl">&times;</button>
+      </div>
+
+      <div class="space-y-3">
+        <!-- Stats summary per difficulty -->
+        <div class="grid grid-cols-3 gap-2 text-center">
+          <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-700/50">
+            <span class="text-xs text-slate-400 block mb-1">初級</span>
+            <div id="stat-easy-best" class="text-base font-bold text-amber-400">-- 秒</div>
+            <div id="stat-easy-winrate" class="text-[10px] text-slate-400">勝率: 0%</div>
+          </div>
+          <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-700/50">
+            <span class="text-xs text-slate-400 block mb-1">中級</span>
+            <div id="stat-medium-best" class="text-base font-bold text-amber-400">-- 秒</div>
+            <div id="stat-medium-winrate" class="text-[10px] text-slate-400">勝率: 0%</div>
+          </div>
+          <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-700/50">
+            <span class="text-xs text-slate-400 block mb-1">高級</span>
+            <div id="stat-hard-best" class="text-base font-bold text-amber-400">-- 秒</div>
+            <div id="stat-hard-winrate" class="text-[10px] text-slate-400">勝率: 0%</div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 p-3 rounded-xl border border-slate-700 space-y-1.5">
+          <div class="flex justify-between text-xs sm:text-sm">
+            <span class="text-slate-400">總遊玩次數：</span>
+            <span id="stat-total-played" class="font-bold text-white">0</span>
+          </div>
+          <div class="flex justify-between text-xs sm:text-sm">
+            <span class="text-slate-400">總勝利次數：</span>
+            <span id="stat-total-won" class="font-bold text-emerald-400">0</span>
+          </div>
+        </div>
+
+        <div class="flex justify-between items-center pt-2">
+          <button id="btn-reset-stats" class="text-xs text-red-400 hover:text-red-300 underline">
+            重置所有戰績資料
+          </button>
+          <button class="close-modal px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium rounded-lg">
+            關閉
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Instructions Help -->
+  <div id="modal-help" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-800 border border-slate-700 w-full max-w-lg rounded-2xl p-5 shadow-2xl">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-gamepad text-amber-400"></i> 玩法與操作說明
+        </h3>
+        <button class="close-modal text-slate-400 hover:text-white text-xl">&times;</button>
+      </div>
+
+      <div class="space-y-2.5 text-xs sm:text-sm text-slate-300">
+        <div class="flex items-start gap-2.5 bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/40">
+          <div class="bg-amber-500/20 text-amber-400 p-2 rounded-lg text-base"><i class="fa-solid fa-mouse"></i></div>
+          <div>
+            <h4 class="font-bold text-white">電腦版操作</h4>
+            <p class="text-xs text-slate-400">滑鼠左鍵：翻開方塊 | 滑鼠右鍵：標記/取消旗幟 | 點擊已翻開之數字格：自動擴展開周圍（周圍旗子數需相符）</p>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-2.5 bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/40">
+          <div class="bg-amber-500/20 text-amber-400 p-2 rounded-lg text-base"><i class="fa-solid fa-hand-pointer"></i></div>
+          <div>
+            <h4 class="font-bold text-white">手機/行動端操作</h4>
+            <p class="text-xs text-slate-400">點擊：翻開方塊 | 長按（400ms）：插旗標記 | 或使用頂部工具列切換「挖掘/插旗」模式</p>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-2.5 bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/40">
+          <div class="bg-amber-500/20 text-amber-400 p-2 rounded-lg text-base"><i class="fa-solid fa-shield-halved"></i></div>
+          <div>
+            <h4 class="font-bold text-white">首擊安全保護 (First-Click Safe)</h4>
+            <p class="text-xs text-slate-400">遊戲第一步點擊保證絕對不會踩雷，且第一步周圍 8 格也保證安全！</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 text-right">
+        <button class="close-modal px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg">
+          明白，開始遊戲
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ===================================================================
+       Minesweeper Game Core Engine Architecture
+       =================================================================== */
+
+    // Number Color Map for Modern UI
+    const NUMBER_COLORS = {
+      1: 'text-blue-400 font-bold',
+      2: 'text-emerald-400 font-bold',
+      3: 'text-red-400 font-bold',
+      4: 'text-indigo-400 font-bold',
+      5: 'text-amber-400 font-bold',
+      6: 'text-cyan-400 font-bold',
+      7: 'text-purple-400 font-bold',
+      8: 'text-gray-400 font-bold'
+    };
+
+    // Preset Configs
+    const PRESETS = {
+      easy: { rows: 9, cols: 9, mines: 10, name: '初級' },
+      medium: { rows: 16, cols: 16, mines: 40, name: '中級' },
+      hard: { rows: 16, cols: 30, mines: 99, name: '高級' }
+    };
+
+    // State Management
+    let config = { ...PRESETS.medium };
+    let grid = []; // 2D Array holding cell objects
+    let gameStarted = false;
+    let gameOver = false;
+    let timerInterval = null;
+    let timeElapsed = 0;
+    let flagsPlaced = 0;
+    let mobileMode = 'dig'; // 'dig' or 'flag'
+
+    // LocalStorage Key
+    const STORAGE_KEY = 'MINESWEEPER_PRO_STATS_V2';
+
+    // Helper to get sanitized stats from LocalStorage
+    function getStats() {
+      const defaultStats = {
+        easy: { bestTime: null, played: 0, won: 0 },
+        medium: { bestTime: null, played: 0, won: 0 },
+        hard: { bestTime: null, played: 0, won: 0 },
+        totalPlayed: 0,
+        totalWon: 0
+      };
+
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return defaultStats;
+        const parsed = JSON.parse(raw);
+
+        const sanitizeDiff = (diff) => ({
+          bestTime: (typeof diff?.bestTime === 'number' && diff.bestTime > 0) ? diff.bestTime : null,
+          played: (typeof diff?.played === 'number' && diff.played >= 0) ? diff.played : 0,
+          won: (typeof diff?.won === 'number' && diff.won >= 0) ? diff.won : 0
+        });
+
+        return {
+          easy: sanitizeDiff(parsed.easy),
+          medium: sanitizeDiff(parsed.medium),
+          hard: sanitizeDiff(parsed.hard),
+          totalPlayed: (typeof parsed?.totalPlayed === 'number' && parsed.totalPlayed >= 0) ? parsed.totalPlayed : 0,
+          totalWon: (typeof parsed?.totalWon === 'number' && parsed.totalWon >= 0) ? parsed.totalWon : 0
+        };
+      } catch (err) {
+        console.warn('LocalStorage corrupt or disabled:', err);
+        return defaultStats;
+      }
+    }
+
+    // Save stats to LocalStorage
+    function saveStats(stats) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));
+      } catch (err) {
+        console.error('Failed to save stats:', err);
+      }
+    }
+
+    // Initialize empty grid board
+    function initBoard() {
+      clearInterval(timerInterval);
+      timerInterval = null;
+      gameStarted = false;
+      gameOver = false;
+      timeElapsed = 0;
+      flagsPlaced = 0;
+
+      // Hide Result Modal if open
+      document.getElementById('modal-result').classList.add('hidden');
+
+      updateLCD('lcd-timer', 0);
+      updateLCD('lcd-mines', config.mines);
+      setFace('😊');
+
+      grid = [];
+      const boardElement = document.getElementById('mine-grid');
+      boardElement.innerHTML = '';
+
+      // Set grid dynamic column layout
+      boardElement.style.gridTemplateColumns = `repeat(${config.cols}, minmax(0, 1fr))`;
+
+      for (let r = 0; r < config.rows; r++) {
+        let row = [];
+        for (let c = 0; c < config.cols; c++) {
+          row.push({
+            row: r,
+            col: c,
+            mine: false,
+            revealed: false,
+            flagged: false,
+            neighborMines: 0,
+            element: null
+          });
+        }
+        grid.push(row);
+      }
+
+      renderGridDOM();
+    }
+
+    // Calculate dynamic square cell dimensions to ensure ZERO overflow
+    function calculateCellSize() {
+      const wrapper = document.getElementById('board-wrapper');
+      const maxW = wrapper.clientWidth - 20;
+      const maxH = wrapper.clientHeight - 20;
+
+      // Determine size constrained by width vs height
+      const cellW = Math.floor(maxW / config.cols);
+      const cellH = Math.floor(maxH / config.rows);
+      
+      // Clamp cell size between 16px and 38px
+      const size = Math.max(16, Math.min(38, Math.min(cellW, cellH)));
+      return size;
+    }
+
+    // Render Grid Elements
+    function renderGridDOM() {
+      const boardElement = document.getElementById('mine-grid');
+      boardElement.innerHTML = '';
+
+      const cellSize = calculateCellSize();
+
+      for (let r = 0; r < config.rows; r++) {
+        for (let c = 0; c < config.cols; c++) {
+          const cell = grid[r][c];
+          const btn = document.createElement('button');
+          btn.className = `mine-cell flex items-center justify-center font-black rounded select-none bg-slate-700 hover:bg-slate-600 border-t border-l border-slate-500 border-b-2 border-r-2 border-b-slate-900 border-r-slate-900 shadow-sm`;
+          btn.style.width = `${cellSize}px`;
+          btn.style.height = `${cellSize}px`;
+          btn.style.fontSize = `${Math.max(10, Math.floor(cellSize * 0.55))}px`;
+          
+          btn.dataset.row = r;
+          btn.dataset.col = c;
+
+          attachCellEvents(btn, cell);
+
+          cell.element = btn;
+          boardElement.appendChild(btn);
+        }
+      }
+    }
+
+    // Dynamic First-Click Guaranteed Mine Generation
+    function generateMines(firstRow, firstCol) {
+      let minesPlaced = 0;
+      const totalCells = config.rows * config.cols;
+      const maxMines = Math.min(config.mines, totalCells - 9);
+
+      // Safe Zone 3x3 surrounding first click
+      const safeZone = new Set();
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const nr = firstRow + dr;
+          const nc = firstCol + dc;
+          if (nr >= 0 && nr < config.rows && nc >= 0 && nc < config.cols) {
+            safeZone.add(`${nr},${nc}`);
+          }
+        }
+      }
+
+      while (minesPlaced < maxMines) {
+        const randR = Math.floor(Math.random() * config.rows);
+        const randC = Math.floor(Math.random() * config.cols);
+        const key = `${randR},${randC}`;
+
+        if (!safeZone.has(key) && !grid[randR][randC].mine) {
+          grid[randR][randC].mine = true;
+          minesPlaced++;
+        }
+      }
+
+      // Calculate Neighbor Mines Count
+      for (let r = 0; r < config.rows; r++) {
+        for (let c = 0; c < config.cols; c++) {
+          if (grid[r][c].mine) continue;
+          let count = 0;
+          getNeighbors(r, c).forEach(n => {
+            if (n.mine) count++;
+          });
+          grid[r][c].neighborMines = count;
+        }
+      }
+    }
+
+    function getNeighbors(r, c) {
+      const neighbors = [];
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr >= 0 && nr < config.rows && nc >= 0 && nc < config.cols) {
+            neighbors.push(grid[nr][nc]);
+          }
+        }
+      }
+      return neighbors;
+    }
+
+    function attachCellEvents(btn, cell) {
+      let touchTimer = null;
+      let isLongTouch = false;
+
+      // Handle Left Click / Reveal
+      btn.addEventListener('click', (e) => {
+        if (gameOver) return;
+        if (isLongTouch) {
+          isLongTouch = false;
+          return;
+        }
+
+        if (mobileMode === 'flag') {
+          toggleFlag(cell);
+        } else {
+          if (cell.flagged) return;
+          if (!cell.revealed) {
+            revealCell(cell.row, cell.col);
+          } else {
+            chordCell(cell);
+          }
+        }
+      });
+
+      // Handle Right Click / Flag
+      btn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        if (gameOver) return;
+        toggleFlag(cell);
+      });
+
+      // Mobile Touch Long Press to Flag
+      btn.addEventListener('touchstart', (e) => {
+        if (gameOver) return;
+        isLongTouch = false;
+        touchTimer = setTimeout(() => {
+          isLongTouch = true;
+          toggleFlag(cell);
+          if (navigator.vibrate) navigator.vibrate(40);
+        }, 380);
+      }, { passive: true });
+
+      btn.addEventListener('touchend', () => {
+        if (touchTimer) clearTimeout(touchTimer);
+      });
+
+      btn.addEventListener('touchmove', () => {
+        if (touchTimer) clearTimeout(touchTimer);
+      });
+    }
+
+    function startTimer() {
+      if (gameStarted) return;
+      gameStarted = true;
+      timeElapsed = 0;
+      
+      const currentDiffKey = getCurrentDiffKey();
+      if (currentDiffKey) {
+        const stats = getStats();
+        stats[currentDiffKey].played++;
+        stats.totalPlayed++;
+        saveStats(stats);
+      }
+
+      timerInterval = setInterval(() => {
+        timeElapsed++;
+        if (timeElapsed > 999) timeElapsed = 999;
+        updateLCD('lcd-timer', timeElapsed);
+      }, 1000);
+    }
+
+    function toggleFlag(cell) {
+      if (cell.revealed) return;
+      cell.flagged = !cell.flagged;
+      flagsPlaced += cell.flagged ? 1 : -1;
+
+      updateLCD('lcd-mines', config.mines - flagsPlaced);
+
+      if (cell.flagged) {
+        cell.element.innerHTML = '<i class="fa-solid fa-flag text-red-500 drop-shadow"></i>';
+      } else {
+        cell.element.innerHTML = '';
+      }
+    }
+
+    function revealCell(r, c) {
+      const cell = grid[r][c];
+      if (cell.revealed || cell.flagged) return;
+
+      if (!gameStarted) {
+        generateMines(r, c);
+        startTimer();
+      }
+
+      if (cell.mine) {
+        triggerGameOver(cell);
+        return;
+      }
+
+      if (cell.neighborMines === 0) {
+        bfsExpand(r, c);
+      } else {
+        renderRevealedCell(cell);
+      }
+
+      checkWinCondition();
+    }
+
+    // Queue-based BFS Flood Fill Expansion
+    function bfsExpand(startR, startC) {
+      const queue = [[startR, startC]];
+
+      while (queue.length > 0) {
+        const [r, c] = queue.shift();
+        const cell = grid[r][c];
+
+        if (cell.revealed || cell.flagged) continue;
+
+        renderRevealedCell(cell);
+
+        if (cell.neighborMines === 0) {
+          getNeighbors(r, c).forEach(n => {
+            if (!n.revealed && !n.flagged) {
+              queue.push([n.row, n.col]);
+            }
+          });
+        }
+      }
+    }
+
+    function chordCell(cell) {
+      if (!cell.revealed || cell.neighborMines === 0) return;
+
+      const neighbors = getNeighbors(cell.row, cell.col);
+      const flaggedCount = neighbors.filter(n => n.flagged).length;
+
+      if (flaggedCount === cell.neighborMines) {
+        neighbors.forEach(n => {
+          if (!n.revealed && !n.flagged) {
+            revealCell(n.row, n.col);
+          }
+        });
+      }
+    }
+
+    function renderRevealedCell(cell) {
+      cell.revealed = true;
+      const el = cell.element;
+
+      el.className = `${el.className.split(' ').filter(c => !c.startsWith('bg-') && !c.startsWith('border-')).join(' ')} bg-slate-900 border border-slate-800 shadow-inner`;
+
+      if (cell.neighborMines > 0) {
+        el.innerHTML = cell.neighborMines;
+        el.className += ` ${NUMBER_COLORS[cell.neighborMines] || 'text-white'}`;
+      } else {
+        el.innerHTML = '';
+      }
+    }
+
+    function checkWinCondition() {
+      let unrevealedSafeCells = 0;
+
+      for (let r = 0; r < config.rows; r++) {
+        for (let c = 0; c < config.cols; c++) {
+          const cell = grid[r][c];
+          if (!cell.mine && !cell.revealed) {
+            unrevealedSafeCells++;
+          }
+        }
+      }
+
+      if (unrevealedSafeCells === 0) {
+        triggerWin();
+      }
+    }
+
+    // Trigger Game Victory
+    function triggerWin() {
+      gameOver = true;
+      clearInterval(timerInterval);
+      setFace('😎');
+
+      // Auto flag remaining mines
+      for (let r = 0; r < config.rows; r++) {
+        for (let c = 0; c < config.cols; c++) {
+          const cell = grid[r][c];
+          if (cell.mine && !cell.flagged) {
+            cell.flagged = true;
+            cell.element.innerHTML = '<i class="fa-solid fa-flag text-red-500"></i>';
+          }
+        }
+      }
+      updateLCD('lcd-mines', 0);
+
+      if (window.confetti) {
+        confetti({
+          particleCount: 120,
+          spread: 80,
+          origin: { y: 0.6 }
+        });
+      }
+
+      // Record Stats
+      const diffKey = getCurrentDiffKey();
+      let bestTimeVal = '--';
+      if (diffKey) {
+        const stats = getStats();
+        stats[diffKey].won++;
+        stats.totalWon++;
+        if (!stats[diffKey].bestTime || timeElapsed < stats[diffKey].bestTime) {
+          stats[diffKey].bestTime = timeElapsed;
+        }
+        bestTimeVal = `${stats[diffKey].bestTime} 秒`;
+        saveStats(stats);
+      }
+
+      showResultModal({
+        win: true,
+        title: '🎉 挑戰成功！',
+        subtitle: '太厲害了！你成功清除了所有地雷！',
+        time: `${timeElapsed} 秒`,
+        difficulty: getDifficultyName(),
+        bestTime: bestTimeVal,
+        emoji: '😎',
+        iconBgClass: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+      });
+    }
+
+    // Trigger Game Over Loss
+    function triggerGameOver(hitCell) {
+      gameOver = true;
+      clearInterval(timerInterval);
+      setFace('😵');
+
+      hitCell.element.className = hitCell.element.className.replace('bg-slate-700', 'bg-red-600') + ' animate-pulse';
+      hitCell.element.innerHTML = '<i class="fa-solid fa-land-mine-on text-slate-950"></i>';
+
+      // Reveal mines
+      for (let r = 0; r < config.rows; r++) {
+        for (let c = 0; c < config.cols; c++) {
+          const cell = grid[r][c];
+          if (cell === hitCell) continue;
+
+          if (cell.mine && !cell.flagged) {
+            cell.element.className = cell.element.className.replace('bg-slate-700', 'bg-slate-950') + ' text-red-500';
+            cell.element.innerHTML = '<i class="fa-solid fa-land-mine-on"></i>';
+          } else if (!cell.mine && cell.flagged) {
+            cell.element.innerHTML = '<i class="fa-solid fa-xmark text-yellow-400"></i>';
+          }
+        }
+      }
+
+      const diffKey = getCurrentDiffKey();
+      const stats = getStats();
+      const bestTimeVal = (diffKey && stats[diffKey].bestTime) ? `${stats[diffKey].bestTime} 秒` : '-- 秒';
+
+      setTimeout(() => {
+        showResultModal({
+          win: false,
+          title: '💥 踩到地雷！',
+          subtitle: '別灰心，重新調整戰術再來一局！',
+          time: `${timeElapsed} 秒`,
+          difficulty: getDifficultyName(),
+          bestTime: bestTimeVal,
+          emoji: '💥',
+          iconBgClass: 'bg-red-500/20 text-red-400 border-red-500/40'
+        });
+      }, 700);
+    }
+
+    function showResultModal(opts) {
+      document.getElementById('result-emoji').textContent = opts.emoji;
+      document.getElementById('result-title').textContent = opts.title;
+      document.getElementById('result-subtitle').textContent = opts.subtitle;
+      document.getElementById('result-time').textContent = opts.time;
+      document.getElementById('result-difficulty').textContent = opts.difficulty;
+      document.getElementById('result-best-time').textContent = opts.bestTime;
+
+      const iconBg = document.getElementById('result-icon-bg');
+      iconBg.className = `w-20 h-20 rounded-full flex items-center justify-center mb-3 text-4xl shadow-inner border ${opts.iconBgClass}`;
+
+      document.getElementById('modal-result').classList.remove('hidden');
+    }
+
+    function updateLCD(id, num) {
+      const val = Math.max(-99, Math.min(999, num));
+      const str = val < 0 ? `-${Math.abs(val).toString().padStart(2, '0')}` : val.toString().padStart(3, '0');
+      document.getElementById(id).textContent = str;
+    }
+
+    function setFace(emoji) {
+      document.getElementById('face-icon').textContent = emoji;
+    }
+
+    function getCurrentDiffKey() {
+      const selectVal = document.getElementById('difficulty-select').value;
+      return PRESETS[selectVal] ? selectVal : null;
+    }
+
+    function getDifficultyName() {
+      const key = getCurrentDiffKey();
+      return key ? PRESETS[key].name : '自訂難度';
+    }
+
+    function updateStatsModal() {
+      const stats = getStats();
+
+      ['easy', 'medium', 'hard'].forEach(diff => {
+        const best = stats[diff].bestTime ? `${stats[diff].bestTime} 秒` : '-- 秒';
+        const winrate = stats[diff].played > 0 ? Math.round((stats[diff].won / stats[diff].played) * 100) : 0;
+
+        document.getElementById(`stat-${diff}-best`).textContent = best;
+        document.getElementById(`stat-${diff}-winrate`).textContent = `勝率: ${winrate}% (${stats[diff].won}/${stats[diff].played})`;
+      });
+
+      document.getElementById('stat-total-played').textContent = stats.totalPlayed;
+      document.getElementById('stat-total-won').textContent = stats.totalWon;
+    }
+
+    // Handle Browser Window Resize for Auto Cell-Scaling
+    window.addEventListener('resize', () => {
+      if (grid.length === 0) return;
+      const newCellSize = calculateCellSize();
+      for (let r = 0; r < config.rows; r++) {
+        for (let c = 0; c < config.cols; c++) {
+          const btn = grid[r][c].element;
+          if (btn) {
+            btn.style.width = `${newCellSize}px`;
+            btn.style.height = `${newCellSize}px`;
+            btn.style.fontSize = `${Math.max(10, Math.floor(newCellSize * 0.55))}px`;
+          }
+        }
+      }
+    });
+
+    // Attach Main Controls
+    window.addEventListener('DOMContentLoaded', () => {
+      initBoard();
+
+      // Explicit Restart / Play Again Buttons
+      document.getElementById('btn-top-restart').addEventListener('click', initBoard);
+      document.getElementById('btn-reset').addEventListener('click', initBoard);
+      document.getElementById('btn-result-restart').addEventListener('click', initBoard);
+
+      // Difficulty Select
+      const diffSelect = document.getElementById('difficulty-select');
+      diffSelect.addEventListener('change', (e) => {
+        const val = e.target.value;
+        if (val === 'custom') {
+          document.getElementById('modal-custom').classList.remove('hidden');
+        } else if (PRESETS[val]) {
+          config = { ...PRESETS[val] };
+          initBoard();
+        }
+      });
+
+      // Mobile Dig/Flag Toggle Buttons
+      const btnDig = document.getElementById('mode-dig');
+      const btnFlag = document.getElementById('mode-flag');
+
+      btnDig.addEventListener('click', () => {
+        mobileMode = 'dig';
+        btnDig.className = 'px-2 py-0.5 rounded text-[11px] font-bold transition bg-amber-500 text-slate-950';
+        btnFlag.className = 'px-2 py-0.5 rounded text-[11px] font-bold transition text-slate-400 hover:text-white';
+      });
+
+      btnFlag.addEventListener('click', () => {
+        mobileMode = 'flag';
+        btnFlag.className = 'px-2 py-0.5 rounded text-[11px] font-bold transition bg-red-500 text-white';
+        btnDig.className = 'px-2 py-0.5 rounded text-[11px] font-bold transition text-slate-400 hover:text-white';
+      });
+
+      // Modals Open/Close Events
+      document.getElementById('btn-stats').addEventListener('click', () => {
+        updateStatsModal();
+        document.getElementById('modal-stats').classList.remove('hidden');
+      });
+
+      document.getElementById('btn-help').addEventListener('click', () => {
+        document.getElementById('modal-help').classList.remove('hidden');
+      });
+
+      document.querySelectorAll('.close-modal').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.fixed').forEach(m => m.classList.add('hidden'));
+        });
+      });
+
+      // Custom Form Submit
+      document.getElementById('custom-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const r = parseInt(document.getElementById('custom-rows').value, 10);
+        const c = parseInt(document.getElementById('custom-cols').value, 10);
+        const m = parseInt(document.getElementById('custom-mines').value, 10);
+
+        if (m >= r * c - 9) {
+          document.getElementById('custom-error').classList.remove('hidden');
+          return;
+        }
+
+        document.getElementById('custom-error').classList.add('hidden');
+        config = { rows: r, cols: c, mines: m };
+        document.getElementById('modal-custom').classList.add('hidden');
+        initBoard();
+      });
+
+      document.getElementById('btn-custom-cancel').addEventListener('click', () => {
+        document.getElementById('modal-custom').classList.add('hidden');
+        diffSelect.value = 'medium';
+      });
+
+      // Reset Stats Handler
+      document.getElementById('btn-reset-stats').addEventListener('click', () => {
+        if (confirm('確定要清除所有紀錄與戰績統計嗎？此動作無法復原。')) {
+          localStorage.removeItem(STORAGE_KEY);
+          updateStatsModal();
+        }
+      });
+    });
+  </script>
+</body>
+</html>
